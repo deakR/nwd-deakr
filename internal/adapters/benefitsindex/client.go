@@ -25,6 +25,7 @@ type Client struct {
 	HTTPClient   *http.Client
 	MaxAttempts  int
 	RetryBackoff time.Duration
+	breaker      *CircuitBreaker
 }
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
@@ -33,19 +34,47 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 		HTTPClient:   httpClient,
 		MaxAttempts:  defaultMaxAttempts,
 		RetryBackoff: defaultRetryBackoff,
+		breaker:      NewCircuitBreaker(defaultFailureLimit, defaultCooldown),
 	}
 }
 
 func (c *Client) GetBenefit(ctx context.Context, ref string) (*domain.BenefitRecord, domain.SourceStatus) {
 	start := time.Now()
 
-	status := domain.SourceStatus{
-		Status: "unavailable",
+	if ref == "" {
+		return nil, domain.SourceStatus{
+			Status:       "unavailable",
+			ErrorMessage: "benefit reference is empty",
+			LatencyMs:    time.Since(start).Milliseconds(),
+		}
 	}
 
-	if ref == "" {
-		status.ErrorMessage = "benefit reference is empty"
-		return nil, status
+	if allowed, _ := c.breaker.Allow(); !allowed {
+		return nil, domain.SourceStatus{
+			Status:       "circuit_open",
+			ErrorMessage: "benefits register circuit open",
+			LatencyMs:    time.Since(start).Milliseconds(),
+		}
+	}
+
+	record, status := c.fetchBenefit(ctx, ref)
+
+	switch status.Status {
+	case "ok":
+		c.breaker.RecordSuccess()
+	case "not_found":
+	default:
+		c.breaker.RecordFailure()
+	}
+
+	return record, status
+}
+
+func (c *Client) fetchBenefit(ctx context.Context, ref string) (*domain.BenefitRecord, domain.SourceStatus) {
+	start := time.Now()
+
+	status := domain.SourceStatus{
+		Status: "unavailable",
 	}
 
 	upstreamURL := c.BaseURL + "/records/" + ref
