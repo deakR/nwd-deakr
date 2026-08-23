@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"nwd-deakr/internal/adapters/residentindex"
 	"nwd-deakr/internal/domain"
 )
+
+const unifiedRequestTimeout = 10 * time.Second
 
 var (
 	residentIndexURL = "http://127.0.0.1:8081"
@@ -109,6 +112,9 @@ func getUnified(
 			return
 		}
 
+		ctx, cancel := context.WithTimeout(r.Context(), unifiedRequestTimeout)
+		defer cancel()
+
 		type residentResult struct {
 			data   *domain.Resident
 			status domain.SourceStatus
@@ -125,7 +131,7 @@ func getUnified(
 		if residentID != "" {
 			go func() {
 				data, status := residentClient.GetResident(
-					r.Context(),
+					ctx,
 					residentID,
 				)
 
@@ -139,7 +145,7 @@ func getUnified(
 		if benefitRef != "" {
 			go func() {
 				data, status := benefitsClient.GetBenefit(
-					r.Context(),
+					ctx,
 					benefitRef,
 				)
 

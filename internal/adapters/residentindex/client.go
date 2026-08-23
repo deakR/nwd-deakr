@@ -218,7 +218,7 @@ func (c *Client) GetResidents(ctx context.Context) ([]domain.Resident, domain.Pa
 		pagination.Complete = false
 		pagination.Reason = "max_pages_reached"
 	default:
-		if pagination.Unique == pagination.ReportedTotal && pagination.ReportedTotal > 0 {
+		if pagination.Unique == pagination.ReportedTotal {
 			pagination.Complete = true
 		} else {
 			pagination.Complete = false

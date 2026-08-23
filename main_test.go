@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -77,6 +78,58 @@ func TestHandlerGetResidents(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), `"partial":true`) {
 		t.Fatalf("did not expect partial flag on healthy source, got %s", rec.Body.String())
+	}
+}
+
+func TestHandlerGetResidentsIsIdempotent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(domain.ResidentPage{
+			Page: 1, PageSize: 25, Total: 2,
+			Results: []domain.Resident{
+				{ID: "R-10001", FirstName: "Ashley"},
+				{ID: "R-10002", FirstName: "Maria"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := residentindex.NewClient(server.URL, server.Client())
+	handler := getResidents(client)
+
+	fetch := func() domain.ResidentListResponse {
+		req := httptest.NewRequest(http.MethodGet, "/residents", nil)
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", rec.Code)
+		}
+
+		var response domain.ResidentListResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return response
+	}
+
+	first := fetch()
+	second := fetch()
+
+	for _, response := range []domain.ResidentListResponse{first, second} {
+		if len(response.Residents) != 2 {
+			t.Fatalf("expected 2 residents, got %d", len(response.Residents))
+		}
+		status := response.Meta.Sources["resident_index"]
+		status.LatencyMs = 0
+		response.Meta.Sources["resident_index"] = status
+	}
+
+	firstJSON, _ := json.Marshal(first)
+	secondJSON, _ := json.Marshal(second)
+
+	if !bytes.Equal(firstJSON, secondJSON) {
+		t.Fatalf("same request must produce same result:\nfirst:  %s\nsecond: %s", firstJSON, secondJSON)
 	}
 }
 

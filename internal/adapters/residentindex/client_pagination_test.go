@@ -196,6 +196,27 @@ func TestGetResidentsAbortsAtMaxPages(t *testing.T) {
 	}
 }
 
+func TestGetResidentsTreatsEmptyCatalogueAsComplete(t *testing.T) {
+	server := pageServer(t,
+		domain.ResidentPage{Total: 0, HasMore: false},
+	)
+	defer server.Close()
+
+	client := NewClient(server.URL, server.Client())
+
+	residents, pagination, status := client.GetResidents(context.Background())
+
+	if status.Status != "ok" {
+		t.Fatalf("expected ok, got %s", status.Status)
+	}
+	if !pagination.Complete || pagination.Reason != "" {
+		t.Fatalf("empty catalogue must be complete, got %+v", pagination)
+	}
+	if pagination.Unique != 0 || pagination.ReportedTotal != 0 || len(residents) != 0 {
+		t.Fatalf("unexpected receipt: %+v", pagination)
+	}
+}
+
 func TestGetResidentsFlagsIncompleteCatalogueOnTotalMismatch(t *testing.T) {
 	server := pageServer(t,
 		domain.ResidentPage{Total: 5, HasMore: false, Results: []domain.Resident{

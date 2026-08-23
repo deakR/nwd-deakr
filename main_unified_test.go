@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"nwd-deakr/internal/adapters/benefitsindex"
 	"nwd-deakr/internal/adapters/residentindex"
@@ -192,6 +193,58 @@ func TestUnifiedResidentUnavailable(t *testing.T) {
 
 	if !strings.Contains(body, `"status":"unavailable"`) {
 		t.Fatalf("expected unavailable status: %s", body)
+	}
+}
+
+func TestUnifiedBenefitsTimeoutDegradesGracefully(t *testing.T) {
+	residentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id": "R-10001", "first_name": "Ashley"}`))
+	}))
+	defer residentServer.Close()
+
+	benefitServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(`<BenefitsRegister><Record><Ref>CA/2016/4001</Ref></Record></BenefitsRegister>`))
+	}))
+	defer benefitServer.Close()
+
+	slowClient := &http.Client{Timeout: 50 * time.Millisecond}
+
+	residentClient := residentindex.NewClient(residentServer.URL, slowClient)
+	benefitsClient := benefitsindex.NewClient(benefitServer.URL, slowClient)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/unified?resident_id=R-10001&benefit_ref=CA/2016/4001",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	getUnified(residentClient, benefitsClient)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 despite timeout, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `"id":"R-10001"`) {
+		t.Fatalf("resident should survive the benefits timeout: %s", body)
+	}
+
+	if !strings.Contains(body, `"benefits":null`) {
+		t.Fatalf("timed-out source must not block the response: %s", body)
+	}
+
+	if !strings.Contains(body, `"partial":true`) {
+		t.Fatalf("expected partial=true: %s", body)
+	}
+
+	if !strings.Contains(body, `"status":"unavailable"`) {
+		t.Fatalf("expected unavailable status for timed-out source: %s", body)
 	}
 }
 
