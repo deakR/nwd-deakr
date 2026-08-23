@@ -11,3 +11,13 @@ type Resident struct {
 	ProgramStatus string `json:"program_status"`
 	LastContact   string `json:"last_contact"`
 }
+
+type BenefitRecord struct {
+	Ref         string `json:"ref"`
+	Name        string `json:"name"`
+	Born        string `json:"born"`
+	Addr        string `json:"addr"`
+	Town        string `json:"town"`
+	BenefitCode string `json:"benefit_code"`
+	ReviewDue   string `json:"review_due"`
+}
