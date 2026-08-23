@@ -219,6 +219,26 @@ func main() {
 	)
 
 	mux.HandleFunc(
+		"GET /docs",
+		serveDocs,
+	)
+
+	mux.HandleFunc(
+		"GET /docs/swagger-ui.css",
+		serveSwaggerCSS,
+	)
+
+	mux.HandleFunc(
+		"GET /docs/swagger-ui-bundle.js",
+		serveSwaggerJS,
+	)
+
+	mux.HandleFunc(
+		"GET /openapi.yaml",
+		serveOpenAPISpec,
+	)
+
+	mux.HandleFunc(
 		"GET /unified",
 		getUnified(residentClient, benefitsClient),
 	)

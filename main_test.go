@@ -54,6 +54,42 @@ func TestHandlerGetBenefit(t *testing.T) {
 	}
 }
 
+func TestHandlerDocsEndpoints(t *testing.T) {
+	rec := httptest.NewRecorder()
+	serveDocs(rec, httptest.NewRequest(http.MethodGet, "/docs", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /docs, got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "unpkg.com") {
+		t.Fatalf("docs page must not reference external CDNs: %s", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	serveSwaggerCSS(rec, httptest.NewRequest(http.MethodGet, "/docs/swagger-ui.css", nil))
+
+	if rec.Code != http.StatusOK || len(rec.Body.Bytes()) < 100000 {
+		t.Fatalf("expected vendored CSS asset, got %d bytes", rec.Body.Len())
+	}
+
+	rec = httptest.NewRecorder()
+	serveSwaggerJS(rec, httptest.NewRequest(http.MethodGet, "/docs/swagger-ui-bundle.js", nil))
+
+	if rec.Code != http.StatusOK || len(rec.Body.Bytes()) < 500000 {
+		t.Fatalf("expected vendored JS asset, got %d bytes", rec.Body.Len())
+	}
+
+	rec = httptest.NewRecorder()
+	serveOpenAPISpec(rec, httptest.NewRequest(http.MethodGet, "/openapi.yaml", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for /openapi.yaml, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "No Wrong Door") {
+		t.Fatalf("expected embedded OpenAPI spec, got %s", rec.Body.String())
+	}
+}
+
 func TestHandlerGetResidents(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

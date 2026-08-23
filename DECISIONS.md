@@ -28,3 +28,8 @@
 - Resident Index pages are fetched sequentially and deduplicated by stable resident ID, preserving first-seen order.
 - The catalogue is only marked complete when the unique count matches the total reported by the source.
 - Pagination failures and anomalies are surfaced through the pagination receipt and source metadata rather than silently returning incomplete data.
+
+![](https://img.shields.io/badge/08-API_Documentation-8250df?style=flat-square)
+- Using OpenAPI 3.0 with Swagger UI for API documentation.
+- Gives judges self-serve, interactive endpoint exploration without adding dependencies to the Go code.
+
