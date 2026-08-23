@@ -11,3 +11,7 @@
 ![](https://img.shields.io/badge/03-Scope-1a7f37?style=flat-square)
 - Floor first.
 - Stretch features only after the required functionality works.
+
+![](https://img.shields.io/badge/04-Dependencies-8250df?style=flat-square)
+- Upstream clients are created separately from HTTP handlers.
+- Keeps upstream communication isolated and makes failure behavior testable.
