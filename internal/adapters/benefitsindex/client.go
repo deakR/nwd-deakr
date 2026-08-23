@@ -11,19 +11,28 @@ import (
 	"nwd-deakr/internal/domain"
 )
 
+const (
+	defaultMaxAttempts  = 3
+	defaultRetryBackoff = 50 * time.Millisecond
+)
+
 type xmlResponse struct {
 	Record domain.BenefitRecord `xml:"Record"`
 }
 
 type Client struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL      string
+	HTTPClient   *http.Client
+	MaxAttempts  int
+	RetryBackoff time.Duration
 }
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
 	return &Client{
-		BaseURL:    strings.TrimRight(baseURL, "/"),
-		HTTPClient: httpClient,
+		BaseURL:      strings.TrimRight(baseURL, "/"),
+		HTTPClient:   httpClient,
+		MaxAttempts:  defaultMaxAttempts,
+		RetryBackoff: defaultRetryBackoff,
 	}
 }
 
@@ -41,47 +50,88 @@ func (c *Client) GetBenefit(ctx context.Context, ref string) (*domain.BenefitRec
 
 	upstreamURL := c.BaseURL + "/records/" + ref
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodGet,
-		upstreamURL,
-		nil,
-	)
-	if err != nil {
-		status.ErrorMessage = err.Error()
-		status.LatencyMs = time.Since(start).Milliseconds()
-		return nil, status
+	maxAttempts := c.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = defaultMaxAttempts
 	}
 
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		status.ErrorMessage = err.Error()
-		status.LatencyMs = time.Since(start).Milliseconds()
-		return nil, status
+	backoff := c.RetryBackoff
+	if backoff <= 0 {
+		backoff = defaultRetryBackoff
 	}
-	defer resp.Body.Close()
 
-	status.HTTPCode = resp.StatusCode
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodGet,
+			upstreamURL,
+			nil,
+		)
+		if err != nil {
+			status.ErrorMessage = err.Error()
+			status.LatencyMs = time.Since(start).Milliseconds()
+			return nil, status
+		}
+
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			status.ErrorMessage = fmt.Sprintf("attempt %d/%d: %v", attempt, maxAttempts, err)
+			if attempt < maxAttempts {
+				select {
+				case <-ctx.Done():
+					status.ErrorMessage = ctx.Err().Error()
+					status.LatencyMs = time.Since(start).Milliseconds()
+					return nil, status
+				case <-time.After(backoff):
+					continue
+				}
+			}
+			status.LatencyMs = time.Since(start).Milliseconds()
+			return nil, status
+		}
+
+		status.HTTPCode = resp.StatusCode
+
+		if resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			status.Status = "not_found"
+			status.LatencyMs = time.Since(start).Milliseconds()
+			return nil, status
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			status.ErrorMessage = fmt.Sprintf("attempt %d/%d: upstream returned HTTP %d", attempt, maxAttempts, resp.StatusCode)
+			if attempt < maxAttempts {
+				select {
+				case <-ctx.Done():
+					status.ErrorMessage = ctx.Err().Error()
+					status.LatencyMs = time.Since(start).Milliseconds()
+					return nil, status
+				case <-time.After(backoff):
+					continue
+				}
+			}
+			status.LatencyMs = time.Since(start).Milliseconds()
+			return nil, status
+		}
+
+		var result xmlResponse
+		err = xml.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+
+		if err != nil {
+			status.ErrorMessage = fmt.Sprintf("decode response: %v", err)
+			status.LatencyMs = time.Since(start).Milliseconds()
+			return nil, status
+		}
+
+		status.Status = "ok"
+		status.ErrorMessage = ""
+		status.LatencyMs = time.Since(start).Milliseconds()
+		return &result.Record, status
+	}
+
 	status.LatencyMs = time.Since(start).Milliseconds()
-
-	if resp.StatusCode == http.StatusNotFound {
-		status.Status = "not_found"
-		return nil, status
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		status.ErrorMessage = fmt.Sprintf("upstream returned HTTP %d", resp.StatusCode)
-		return nil, status
-	}
-
-	var result xmlResponse
-
-	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
-		status.ErrorMessage = fmt.Sprintf("decode response: %v", err)
-		return nil, status
-	}
-
-	status.Status = "ok"
-
-	return &result.Record, status
+	return nil, status
 }

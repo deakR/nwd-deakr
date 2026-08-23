@@ -33,3 +33,6 @@
 - Using OpenAPI 3.0 with Swagger UI for API documentation.
 - Gives judges self-serve, interactive endpoint exploration without adding dependencies to the Go code.
 
+![](https://img.shields.io/badge/09-Day_2_Resilience-0969da?style=flat-square)
+- Handled 40% Benefits Register failure rate with bounded retries (3 attempts, 50ms backoff) isolated to the Benefits adapter.
+- Transient errors retry; 404s fail fast. Exhaustion falls back to existing degradation with zero changes to aggregation logic.
