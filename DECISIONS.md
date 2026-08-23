@@ -23,3 +23,8 @@
 ![](https://img.shields.io/badge/06-Degradation-cf222e?style=flat-square)
 - Return partial data with nullable entity pointers and a structured source status map.
 - Upstream failure reports unavailable in metadata instead of failing the caller.
+
+![](https://img.shields.io/badge/07-Pagination-0969da?style=flat-square)
+- Resident Index pages are fetched sequentially and deduplicated by stable resident ID, preserving first-seen order.
+- The catalogue is only marked complete when the unique count matches the total reported by the source.
+- Pagination failures and anomalies are surfaced through the pagination receipt and source metadata rather than silently returning incomplete data.

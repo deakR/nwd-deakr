@@ -39,3 +39,29 @@ type UnifiedMeta struct {
 	Sources map[string]SourceStatus `json:"sources"`
 	Partial bool                    `json:"partial"`
 }
+
+// ResidentPage is the raw page payload returned by the Resident Index.
+type ResidentPage struct {
+	Page     int        `json:"page"`
+	PageSize int        `json:"page_size"`
+	Total    int        `json:"total"`
+	HasMore  bool       `json:"has_more"`
+	Results  []Resident `json:"results"`
+}
+
+type PaginationStatus struct {
+	PagesFetched  int    `json:"pages_fetched"`
+	RecordsSeen   int    `json:"records_seen"`
+	Duplicates    int    `json:"duplicates"`
+	Conflicts     int    `json:"conflicts"`
+	Unique        int    `json:"unique"`
+	ReportedTotal int    `json:"reported_total"`
+	Complete      bool   `json:"complete"`
+	Reason        string `json:"reason,omitempty"`
+}
+
+type ResidentListResponse struct {
+	Residents  []Resident       `json:"residents"`
+	Pagination PaginationStatus `json:"pagination"`
+	Meta       UnifiedMeta      `json:"_meta"`
+}
