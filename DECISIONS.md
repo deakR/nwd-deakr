@@ -45,3 +45,8 @@
 - 3 consecutive failed operations trip the circuit to open for 5s cooldown before a single-flight trial probe.
 - Counted at the operation level post-retries to protect against sustained outages without false positives from the 40% noise.
 - Rejections fail fast with `circuit_open` status; 404s are definitive and never trip the breaker.
+
+![](https://img.shields.io/badge/11-TTL_Cache-0969da?style=flat-square)
+- 5-minute TTL cache layered inside the Benefits adapter ahead of retries and circuit breaker.
+- Accepts up to 5m staleness on administrative records in exchange for instant reads and stale fallback during outages.
+- Stale data is explicitly labeled; 404s authoritatively evict cache entries to prevent ghost records.
