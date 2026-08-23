@@ -1,30 +1,88 @@
 openapi: 3.0.3
 info:
-  title: No Wrong Door — Unified Resident API
+  title: No Wrong Door — Unified Resident Integration API
   version: 1.0.0
   description: |
-    One API that assembles a resident view from two source systems:
-    a paginated REST Resident Index and a slow, intermittently failing
-    XML Benefits Register. The sources share no common key.
+    One integration API that unifies citizen data across two legacy municipal sources:
+    a paginated REST Resident Index and an unreliable XML Benefits Register.
 
-    Degradation policy: aggregate endpoints always answer HTTP 200 with
-    whatever data was collected plus a `_meta` block naming each source's
-    status, so a missing source is explained rather than silently treated
-    as empty.
-
-    The catalogue endpoint additionally returns a pagination receipt.
-    The Resident Index serves offset pages whose boundaries shift, so the
-    same record can appear on two consecutive pages; duplicates are removed
-    by stable ID (first-seen order preserved) and `pagination.complete`
-    is true only when the unique count equals the total reported by the source.
+    ### Key Architectural Behaviors
+    * **Graceful Degradation:** Aggregate endpoints always respond with HTTP 200 and a structured `_meta` diagnostic envelope explaining any failed upstream sources rather than failing the caller.
+    * **Catalogue Deduplication:** The Resident Index pagination shifts boundaries dynamically; duplicates are removed by stable resident ID (preserving first-seen order) and verified against the source total.
+    * **Failure Resilience:** The Benefits Register operates under a 40% upstream failure rate; calls are protected with bounded retries, an in-memory TTL cache, and a circuit breaker.
 
 servers:
   - url: http://127.0.0.1:8080
-    description: Local demo server
+    description: Local Unified API Server
+
+tags:
+  - name: Unified Integration
+    description: Primary aggregation endpoint returning a combined citizen view with source diagnostics.
+  - name: Resident Index
+    description: REST service (Port 8081) for individual resident lookups and full catalogue deduplication.
+  - name: Benefits Register
+    description: XML service (Port 8082) for legacy entitlement and benefit claim records.
 
 paths:
+  /unified:
+    get:
+      tags:
+        - Unified Integration
+      summary: Unified view across both sources
+      description: |
+        Queries either or both upstream sources concurrently and returns everything known about
+        the person, including per-source status metadata. Provide at least one query parameter.
+
+        This endpoint never fails because an upstream failed: failures are reported inside
+        `_meta.sources` with `partial: true` while any healthy source data is returned.
+      operationId: getUnifiedView
+      parameters:
+        - name: resident_id
+          in: query
+          required: false
+          description: Resident Index identifier to look up.
+          schema:
+            type: string
+          example: R-10001
+        - name: benefit_ref
+          in: query
+          required: false
+          description: Benefits Register reference to look up (multi-segment path).
+          schema:
+            type: string
+          example: CA/2016/4001
+      responses:
+        '200':
+          description: Unified record with per-source status diagnostics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnifiedResponse'
+        '400':
+          description: Neither resident_id nor benefit_ref was provided.
+
+  /residents:
+    get:
+      tags:
+        - Resident Index
+      summary: Fetch full deduplicated resident catalogue
+      description: |
+        Walks every page of the Resident Index sequentially, removes duplicates
+        caused by shifting page boundaries, and returns the full catalogue together
+        with a pagination receipt describing collection statistics.
+      operationId: listResidents
+      responses:
+        '200':
+          description: Deduplicated catalogue with pagination receipt and source metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResidentListResponse'
+
   /residents/{id}:
     get:
+      tags:
+        - Resident Index
       summary: Fetch a single resident
       description: Looks up one record in the Resident Index by its stable ID.
       operationId: getResidentById
@@ -35,7 +93,7 @@ paths:
           description: Resident Index identifier.
           schema:
             type: string
-          example: R-10234
+          example: R-10001
       responses:
         '200':
           description: The resident record.
@@ -48,31 +106,15 @@ paths:
         '502':
           $ref: '#/components/responses/UpstreamUnavailable'
 
-  /residents:
-    get:
-      summary: Fetch the complete deduplicated catalogue
-      description: |
-        Walks every page of the Resident Index sequentially, removes the
-        duplicates caused by shifting page boundaries and returns the full
-        catalogue together with a pagination receipt describing exactly
-        what happened during collection.
-      operationId: listResidents
-      responses:
-        '200':
-          description: The catalogue with its pagination receipt.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ResidentListResponse'
-
   /benefits/{ref}:
     get:
+      tags:
+        - Benefits Register
       summary: Fetch a single benefits record
       description: |
         Looks up one record in the legacy XML Benefits Register by reference.
-        References contain slashes (e.g. NO/2019/4234). The upstream service
-        answers slowly and intermittently returns HTTP 500; failures surface
-        as 502 on this direct route and as partial metadata on /unified.
+        References contain slashes (e.g. CA/2016/4001). Protected by an in-memory
+        TTL cache, bounded retries, and a circuit breaker.
       operationId: getBenefitByRef
       parameters:
         - name: ref
@@ -81,10 +123,10 @@ paths:
           description: Benefits Register reference, including its slashes.
           schema:
             type: string
-          example: NO/2019/4234
+          example: CA/2016/4001
       responses:
         '200':
-          description: The benefits record.
+          description: The benefit record.
           content:
             application/json:
               schema:
@@ -94,60 +136,22 @@ paths:
         '502':
           $ref: '#/components/responses/UpstreamUnavailable'
 
-  /unified:
-    get:
-      summary: Unified view across both sources
-      description: |
-        Queries either or both sources and returns everything known about
-        the person, including per-source status metadata. Provide at least
-        one query parameter. Because the sources share no common key,
-        matching records between them is left to the caller.
-
-        This endpoint never fails because an upstream failed — failures are
-        reported inside `_meta.sources` with `partial` set to true while the
-        healthy source's data is still returned.
-      operationId: getUnifiedView
-      parameters:
-        - name: resident_id
-          in: query
-          required: false
-          description: Resident Index ID to look up.
-          schema:
-            type: string
-          example: R-10234
-        - name: benefit_ref
-          in: query
-          required: false
-          description: Benefits Register reference to look up.
-          schema:
-            type: string
-          example: NO/2019/4234
-      responses:
-        '200':
-          description: Whatever is known, with per-source statuses.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnifiedResponse'
-        '400':
-          description: Neither query parameter was provided.
-
 components:
   responses:
     NotFound:
-      description: No matching record in that source.
+      description: No matching record found in upstream source.
       content:
         text/plain:
           schema:
             type: string
-          example: resident not found
+          example: record not found
     UpstreamUnavailable:
       description: The upstream source failed or timed out.
       content:
         text/plain:
           schema:
             type: string
-          example: resident index unavailable
+          example: service unavailable
 
   schemas:
     Resident:
@@ -155,56 +159,56 @@ components:
       properties:
         id:
           type: string
-          example: R-10234
+          example: R-10001
         first_name:
           type: string
-          example: Maria
+          example: Ashley
         last_name:
           type: string
-          example: Delgado
+          example: Kessler
         date_of_birth:
           type: string
-          example: '1971-04-02'
+          example: '1983-01-23'
         address_line:
           type: string
-          example: 118 Cedar Ave
+          example: 203 Hazel St
         city:
           type: string
-          example: Northgate
+          example: Calder Central
         phone:
           type: string
-          example: 555-402-9911
+          example: 555-102-3948
         program_status:
           type: string
           example: Active
         last_contact:
           type: string
-          example: '2025-11-30'
+          example: '2025-10-12'
 
     BenefitRecord:
       type: object
       properties:
         ref:
           type: string
-          example: NO/2019/4234
+          example: CA/2016/4001
         name:
           type: string
-          example: DELGADO, Maria
+          example: KESSLER, Ashley
         born:
           type: string
-          example: '1971-04-02'
+          example: '1983-01-23'
         addr:
           type: string
-          example: 118 Cedar Avenue
+          example: 203 Hazel Street
         town:
           type: string
-          example: Northgate
+          example: Calder Central
         benefit_code:
           type: string
-          example: HSP-B
+          example: HSP-A
         review_due:
           type: string
-          example: '2026-05-14'
+          example: '2026-06-19'
 
     SourceStatus:
       type: object
@@ -213,24 +217,26 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, not_found, unavailable]
+          enum: [ok, not_found, unavailable, circuit_open, stale]
           description: |
-            ok — source answered successfully;
+            ok — source answered successfully (or fresh cache hit);
             not_found — source answered, no such record;
-            unavailable — source failed, timed out or returned garbage.
+            unavailable — source failed or timed out;
+            circuit_open — circuit breaker tripped, failing fast;
+            stale — serving expired cached record during outage.
           example: ok
         http_code:
           type: integer
-          description: Last HTTP status code seen from the source.
+          description: Last HTTP status code returned by upstream.
           example: 200
         latency_ms:
           type: integer
           format: int64
-          description: Round-trip time of the source call in milliseconds.
-          example: 12
+          description: Round-trip execution latency in milliseconds.
+          example: 14
         error_message:
           type: string
-          description: Why the source is not ok, when it is not.
+          description: Diagnostic details when source status is not ok.
           example: upstream returned HTTP 500
 
     UnifiedMeta:
@@ -243,7 +249,7 @@ components:
           description: Status per queried source, keyed by source name.
         partial:
           type: boolean
-          description: True when any queried source did not answer successfully.
+          description: True when any queried source failed or returned degraded data.
 
     PaginationStatus:
       type: object
@@ -257,29 +263,26 @@ components:
           example: 661
         duplicates:
           type: integer
-          description: Records dropped for an already-seen ID.
+          description: Number of duplicate records filtered out.
           example: 41
         conflicts:
           type: integer
-          description: Duplicates whose payload differed from the first-seen copy.
+          description: Duplicates whose payload differed from first-seen copy.
           example: 0
         unique:
           type: integer
-          description: Distinct residents kept, in first-seen order.
+          description: Distinct residents collected in first-seen order.
           example: 620
         reported_total:
           type: integer
-          description: Total the source claims to hold.
+          description: Total record count reported by the source.
           example: 620
         complete:
           type: boolean
-          description: True only when unique equals reported_total after a clean walk.
+          description: True when unique count equals reported total.
         reason:
           type: string
-          description: |
-            Why the catalogue is incomplete, when it is. Values include
-            upstream_failure, invalid_response, pagination_anomaly,
-            max_pages_reached, context_canceled and total_mismatch.
+          description: Explains why the catalogue is incomplete, if applicable.
 
     ResidentListResponse:
       type: object
@@ -300,11 +303,11 @@ components:
           nullable: true
           allOf:
             - $ref: '#/components/schemas/Resident'
-          description: Present when resident_id was queried and the source answered.
+          description: Present when resident_id was queried and found.
         benefits:
           nullable: true
           allOf:
             - $ref: '#/components/schemas/BenefitRecord'
-          description: Present when benefit_ref was queried and the source answered.
+          description: Present when benefit_ref was queried and found.
         _meta:
           $ref: '#/components/schemas/UnifiedMeta'
