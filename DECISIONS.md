@@ -36,3 +36,12 @@
 ![](https://img.shields.io/badge/09-Day_2_Resilience-0969da?style=flat-square)
 - Handled 40% Benefits Register failure rate with bounded retries (3 attempts, 50ms backoff) isolated to the Benefits adapter.
 - Transient errors retry; 404s fail fast. Exhaustion falls back to existing degradation with zero changes to aggregation logic.
+
+---
+
+![](https://img.shields.io/badge/STRETCH-FEATURES-8250df?style=for-the-badge)
+
+![](https://img.shields.io/badge/10-Circuit_Breaker-cf222e?style=flat-square)
+- 3 consecutive failed operations trip the circuit to open for 5s cooldown before a single-flight trial probe.
+- Counted at the operation level post-retries to protect against sustained outages without false positives from the 40% noise.
+- Rejections fail fast with `circuit_open` status; 404s are definitive and never trip the breaker.
