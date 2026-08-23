@@ -15,3 +15,11 @@
 ![](https://img.shields.io/badge/04-Dependencies-8250df?style=flat-square)
 - Upstream clients are created separately from HTTP handlers.
 - Keeps upstream communication isolated and makes failure behavior testable.
+
+![](https://img.shields.io/badge/05-Concurrency-0969da?style=flat-square)
+- Parallel fan-out to upstream services using goroutines and buffered channels.
+- Prevents slow upstream latency from compounding sequentially.
+
+![](https://img.shields.io/badge/06-Degradation-cf222e?style=flat-square)
+- Return partial data with nullable entity pointers and a structured source status map.
+- Upstream failure reports unavailable in metadata instead of failing the caller.
