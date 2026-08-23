@@ -26,6 +26,7 @@ type Client struct {
 	MaxAttempts  int
 	RetryBackoff time.Duration
 	breaker      *CircuitBreaker
+	cache        *Cache
 }
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
@@ -35,6 +36,7 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 		MaxAttempts:  defaultMaxAttempts,
 		RetryBackoff: defaultRetryBackoff,
 		breaker:      NewCircuitBreaker(defaultFailureLimit, defaultCooldown),
+		cache:        NewCache(defaultCacheTTL),
 	}
 }
 
@@ -49,7 +51,22 @@ func (c *Client) GetBenefit(ctx context.Context, ref string) (*domain.BenefitRec
 		}
 	}
 
+	if record, found, stale := c.cache.get(ref); found && !stale {
+		return record, domain.SourceStatus{
+			Status:    "ok",
+			LatencyMs: time.Since(start).Milliseconds(),
+		}
+	}
+
 	if allowed, _ := c.breaker.Allow(); !allowed {
+		if record, found, _ := c.cache.get(ref); found {
+			return record, domain.SourceStatus{
+				Status:       "stale",
+				ErrorMessage: "benefits register circuit open; serving cached record",
+				LatencyMs:    time.Since(start).Milliseconds(),
+			}
+		}
+
 		return nil, domain.SourceStatus{
 			Status:       "circuit_open",
 			ErrorMessage: "benefits register circuit open",
@@ -61,10 +78,20 @@ func (c *Client) GetBenefit(ctx context.Context, ref string) (*domain.BenefitRec
 
 	switch status.Status {
 	case "ok":
+		c.cache.set(ref, record)
 		c.breaker.RecordSuccess()
 	case "not_found":
+		c.cache.drop(ref)
 	default:
 		c.breaker.RecordFailure()
+
+		if cached, found, _ := c.cache.get(ref); found {
+			return cached, domain.SourceStatus{
+				Status:       "stale",
+				ErrorMessage: "benefits register unavailable; serving cached record",
+				LatencyMs:    time.Since(start).Milliseconds(),
+			}
+		}
 	}
 
 	return record, status

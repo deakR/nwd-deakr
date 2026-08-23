@@ -2,6 +2,7 @@ package benefitsindex
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -31,7 +32,8 @@ func TestCircuitBreakerStaysClosedOnSuccessfulOperations(t *testing.T) {
 	client := newBreakerTestClient(server, 3, 5*time.Second)
 
 	for i := 0; i < 5; i++ {
-		if _, status := client.GetBenefit(context.Background(), "CA/2016/4001"); status.Status != "ok" {
+		ref := fmt.Sprintf("CA/2016/%04d", i)
+		if _, status := client.GetBenefit(context.Background(), ref); status.Status != "ok" {
 			t.Fatalf("expected ok on operation %d, got %s", i+1, status.Status)
 		}
 	}
@@ -232,7 +234,8 @@ func TestOperationLevelCountingRetriedRecoveryIsNotAFailure(t *testing.T) {
 	client.MaxAttempts = 2
 
 	for i := 0; i < 5; i++ {
-		if _, status := client.GetBenefit(context.Background(), "CA/2016/4001"); status.Status != "ok" {
+		ref := fmt.Sprintf("CA/2016/%04d", i)
+		if _, status := client.GetBenefit(context.Background(), ref); status.Status != "ok" {
 			t.Fatalf("operation %d: expected ok after retry, got %s", i+1, status.Status)
 		}
 	}
