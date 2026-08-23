@@ -26,9 +26,9 @@ func TestClientGetResidentSuccess(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	resident, err := client.GetResident(context.Background(), "R-10001")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	resident, status := client.GetResident(context.Background(), "R-10001")
+	if status.Status != "ok" {
+		t.Fatalf("unexpected status: %+v", status)
 	}
 
 	if resident.ID != "R-10001" || resident.FirstName != "Ashley" {
@@ -43,9 +43,9 @@ func TestClientGetResidentNotFound(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	_, err := client.GetResident(context.Background(), "R-999999")
-	if err == nil || err.Error() != "resident not found" {
-		t.Fatalf("expected 'resident not found', got %v", err)
+	_, status := client.GetResident(context.Background(), "R-999999")
+	if status.Status != "not_found" {
+		t.Fatalf("expected not_found, got %s", status.Status)
 	}
 }
 
@@ -56,9 +56,9 @@ func TestClientGetResidentUpstream500(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	_, err := client.GetResident(context.Background(), "R-10001")
-	if err == nil {
-		t.Fatalf("expected error on 500, got nil")
+	_, status := client.GetResident(context.Background(), "R-10001")
+	if status.Status != "unavailable" {
+		t.Fatalf("expected unavailable, got %s", status.Status)
 	}
 }
 
@@ -71,8 +71,8 @@ func TestClientGetResidentInvalidJSON(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	_, err := client.GetResident(context.Background(), "R-10001")
-	if err == nil {
-		t.Fatalf("expected error on invalid JSON, got nil")
+	_, status := client.GetResident(context.Background(), "R-10001")
+	if status.Status != "unavailable" {
+		t.Fatalf("expected unavailable, got %s", status.Status)
 	}
 }

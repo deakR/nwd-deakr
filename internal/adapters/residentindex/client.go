@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"nwd-deakr/internal/domain"
 )
@@ -23,9 +24,16 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 	}
 }
 
-func (c *Client) GetResident(ctx context.Context, id string) (*domain.Resident, error) {
+func (c *Client) GetResident(ctx context.Context, id string) (*domain.Resident, domain.SourceStatus) {
+	start := time.Now()
+
+	status := domain.SourceStatus{
+		Status: "unavailable",
+	}
+
 	if id == "" {
-		return nil, fmt.Errorf("resident id is empty")
+		status.ErrorMessage = "resident id is empty"
+		return nil, status
 	}
 
 	upstreamURL := c.BaseURL + "/residents/" + url.PathEscape(id)
@@ -37,28 +45,40 @@ func (c *Client) GetResident(ctx context.Context, id string) (*domain.Resident, 
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		status.ErrorMessage = err.Error()
+		status.LatencyMs = time.Since(start).Milliseconds()
+		return nil, status
 	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request resident index: %w", err)
+		status.ErrorMessage = err.Error()
+		status.LatencyMs = time.Since(start).Milliseconds()
+		return nil, status
 	}
 	defer resp.Body.Close()
 
+	status.HTTPCode = resp.StatusCode
+	status.LatencyMs = time.Since(start).Milliseconds()
+
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("resident not found")
+		status.Status = "not_found"
+		return nil, status
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("resident index returned HTTP %d", resp.StatusCode)
+		status.ErrorMessage = fmt.Sprintf("upstream returned HTTP %d", resp.StatusCode)
+		return nil, status
 	}
 
 	var resident domain.Resident
 
 	if err := json.NewDecoder(resp.Body).Decode(&resident); err != nil {
-		return nil, fmt.Errorf("decode resident response: %w", err)
+		status.ErrorMessage = fmt.Sprintf("decode response: %v", err)
+		return nil, status
 	}
 
-	return &resident, nil
+	status.Status = "ok"
+
+	return &resident, status
 }

@@ -30,9 +30,9 @@ func TestClientGetBenefitSuccess(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	record, err := client.GetBenefit(context.Background(), "CA/2016/4001")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	record, status := client.GetBenefit(context.Background(), "CA/2016/4001")
+	if status.Status != "ok" {
+		t.Fatalf("unexpected status: %+v", status)
 	}
 
 	if record.Ref != "CA/2016/4001" || record.BenefitCode != "HSP-A" {
@@ -47,9 +47,9 @@ func TestClientGetBenefitNotFound(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	_, err := client.GetBenefit(context.Background(), "CA/2016/9999")
-	if err == nil || err.Error() != "benefit record not found" {
-		t.Fatalf("expected 'benefit record not found', got %v", err)
+	_, status := client.GetBenefit(context.Background(), "CA/2016/9999")
+	if status.Status != "not_found" {
+		t.Fatalf("expected not_found, got %s", status.Status)
 	}
 }
 
@@ -60,8 +60,8 @@ func TestClientGetBenefitUpstream500(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	_, err := client.GetBenefit(context.Background(), "CA/2016/4001")
-	if err == nil {
-		t.Fatalf("expected error on 500, got nil")
+	_, status := client.GetBenefit(context.Background(), "CA/2016/4001")
+	if status.Status != "unavailable" {
+		t.Fatalf("expected unavailable, got %s", status.Status)
 	}
 }

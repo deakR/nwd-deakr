@@ -28,13 +28,14 @@ func getResident(client *residentindex.Client) http.HandlerFunc {
 			return
 		}
 
-		resident, err := client.GetResident(r.Context(), id)
-		if err != nil {
-			if err.Error() == "resident not found" {
-				http.Error(w, "resident not found", http.StatusNotFound)
-				return
-			}
+		resident, status := client.GetResident(r.Context(), id)
 
+		if status.Status == "not_found" {
+			http.Error(w, "resident not found", http.StatusNotFound)
+			return
+		}
+
+		if status.Status != "ok" {
 			http.Error(w, "resident index unavailable", http.StatusBadGateway)
 			return
 		}
@@ -53,13 +54,14 @@ func getBenefit(client *benefitsindex.Client) http.HandlerFunc {
 			return
 		}
 
-		record, err := client.GetBenefit(r.Context(), ref)
-		if err != nil {
-			if err.Error() == "benefit record not found" {
-				http.Error(w, "benefit record not found", http.StatusNotFound)
-				return
-			}
+		record, status := client.GetBenefit(r.Context(), ref)
 
+		if status.Status == "not_found" {
+			http.Error(w, "benefit record not found", http.StatusNotFound)
+			return
+		}
+
+		if status.Status != "ok" {
 			http.Error(w, "benefits register unavailable", http.StatusBadGateway)
 			return
 		}
