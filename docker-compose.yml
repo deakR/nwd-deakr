@@ -1,0 +1,51 @@
+# One command, all platforms:  docker compose up --build
+# Swagger UI afterwards:       http://127.0.0.1:8080/docs
+
+services:
+  # Resident Index mock (REST, port 8081)
+  rest-mock:
+    build:
+      context: ./services
+      dockerfile: Dockerfile.mock
+    command: ["python", "rest_service.py", "--host", "0.0.0.0", "--port", "8081"]
+    healthcheck:
+      # /health responds instantly (no delay/failure injection on that path)
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 3s
+
+  # Benefits Register mock (XML, port 8082, 40% failure rate)
+  xml-mock:
+    build:
+      context: ./services
+      dockerfile: Dockerfile.mock
+    command: ["python", "xml_service.py", "--host", "0.0.0.0", "--port", "8082", "--failure-rate", "0.40"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 3s
+
+  # Unified API — starts only after both mocks report healthy,
+  # otherwise startup fan-out would trip the circuit breakers immediately.
+  api:
+    build: .
+    environment:
+      RESIDENT_INDEX_URL: http://rest-mock:8081
+      BENEFITS_URL: http://xml-mock:8082
+    ports:
+      - "8080:8080"
+    depends_on:
+      rest-mock:
+        condition: service_healthy
+      xml-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s

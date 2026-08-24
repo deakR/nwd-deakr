@@ -90,10 +90,11 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8082)
+    ap.add_argument('--host', default='127.0.0.1')
     ap.add_argument('--failure-rate', type=float, default=None)
     args = ap.parse_args()
     if args.failure_rate is not None:
         FAILURE_RATE = args.failure_rate
-    print(f'Benefits Register (XML) on http://127.0.0.1:{args.port}')
+    print(f'Benefits Register (XML) on http://{args.host}:{args.port}')
     print(f'  {len(DATA)} records | failure rate {FAILURE_RATE:.0%} | delay {MIN_DELAY}-{MAX_DELAY}s')
-    ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
+    ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()

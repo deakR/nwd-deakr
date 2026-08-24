@@ -92,7 +92,8 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8081)
+    ap.add_argument('--host', default='127.0.0.1')
     args = ap.parse_args()
-    print(f'Resident Index (REST) on http://127.0.0.1:{args.port}')
+    print(f'Resident Index (REST) on http://{args.host}:{args.port}')
     print(f'  {len(DATA)} records across {len(PAGES)} pages of {DEFAULT_PAGE_SIZE}')
-    ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
+    ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()

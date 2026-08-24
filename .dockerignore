@@ -1,0 +1,12 @@
+.git
+.gitignore
+references/
+*.exe
+*_test.go
+docker-compose.yml
+Dockerfile
+.dockerignore
+README.md
+AI-USAGE.md
+DECISIONS.md
+services/

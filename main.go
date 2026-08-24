@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"nwd-deakr/internal/adapters/benefitsindex"
@@ -14,9 +15,16 @@ import (
 
 const unifiedRequestTimeout = 10 * time.Second
 
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 var (
-	residentIndexURL = "http://127.0.0.1:8081"
-	benefitsURL      = "http://127.0.0.1:8082"
+	residentIndexURL = envOr("RESIDENT_INDEX_URL", "http://127.0.0.1:8081")
+	benefitsURL      = envOr("BENEFITS_URL", "http://127.0.0.1:8082")
 )
 
 var client = &http.Client{
