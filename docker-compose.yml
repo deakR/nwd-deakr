@@ -9,11 +9,12 @@ services:
       dockerfile: Dockerfile.mock
     command: ["python", "rest_service.py", "--host", "0.0.0.0", "--port", "8081"]
     healthcheck:
-      # /health responds instantly (no delay/failure injection on that path)
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=2)"]
-      interval: 2s
+      # Bare TCP probe: proves the listener is up without generating an HTTP
+      # request, so mock logs stay free of healthcheck noise.
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8081), timeout=2).close()"]
+      interval: 5s
       timeout: 3s
-      retries: 15
+      retries: 12
       start_period: 3s
 
   # Benefits Register mock (XML, port 8082, 40% failure rate)
@@ -23,10 +24,10 @@ services:
       dockerfile: Dockerfile.mock
     command: ["python", "xml_service.py", "--host", "0.0.0.0", "--port", "8082", "--failure-rate", "0.40"]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/health', timeout=2)"]
-      interval: 2s
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8082), timeout=2).close()"]
+      interval: 5s
       timeout: 3s
-      retries: 15
+      retries: 12
       start_period: 3s
 
   # Unified API — starts only after both mocks report healthy,
