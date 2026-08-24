@@ -22,8 +22,41 @@ tags:
     description: REST service (Port 8081) for individual resident lookups and full catalogue deduplication.
   - name: Benefits Register
     description: XML service (Port 8082) for legacy entitlement and benefit claim records.
+  - name: Operations
+    description: Service health and observability.
 
 paths:
+  /health:
+    get:
+      tags:
+        - Operations
+      summary: Aggregate upstream health check
+      description: |
+        Probes both upstream services concurrently (3 s timeout) and returns their live status.
+        For the Benefits Register, also reports the current circuit breaker state (`circuit`).
+        Overall `status` is `ok` only when both sources respond healthy; otherwise `degraded`.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Health status of all upstream sources.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                sources:
+                  resident_index:
+                    status: ok
+                    http_code: 200
+                    latency_ms: 3
+                  benefits_register:
+                    status: ok
+                    circuit: closed
+                    http_code: 200
+                    latency_ms: 6
+
+
   /unified:
     get:
       tags:
@@ -276,6 +309,25 @@ components:
           type: string
           description: Diagnostic details when source status is not ok.
           example: upstream returned HTTP 500
+        circuit:
+          type: string
+          enum: [closed, open, half_open]
+          description: Circuit breaker state (Benefits Register only).
+          example: closed
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+          description: ok only when all sources are healthy.
+          example: ok
+        sources:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SourceStatus'
+          description: Live status per upstream source.
 
     UnifiedMeta:
       type: object

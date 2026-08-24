@@ -251,6 +251,45 @@ func getResidentUnified(
 	}
 }
 
+func getHealth(
+	residentClient *residentindex.Client,
+	benefitsClient *benefitsindex.Client,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+
+		type healthResult struct {
+			name   string
+			status domain.SourceStatus
+		}
+		ch := make(chan healthResult, 2)
+
+		go func() { ch <- healthResult{"resident_index", residentClient.GetHealth(ctx)} }()
+		go func() { ch <- healthResult{"benefits_register", benefitsClient.GetHealth(ctx)} }()
+
+		sources := make(map[string]domain.SourceStatus, 2)
+		for range 2 {
+			res := <-ch
+			sources[res.name] = res.status
+		}
+
+		overall := "ok"
+		for _, s := range sources {
+			if s.Status != "ok" {
+				overall = "degraded"
+				break
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(domain.HealthResponse{
+			Status:  overall,
+			Sources: sources,
+		})
+	}
+}
+
 func main() {
 	residentClient := residentindex.NewClient(
 		residentIndexURL,
@@ -309,6 +348,11 @@ func main() {
 	mux.HandleFunc(
 		"GET /unified",
 		getUnified(residentClient, benefitsClient),
+	)
+
+	mux.HandleFunc(
+		"GET /health",
+		getHealth(residentClient, benefitsClient),
 	)
 
 	fmt.Println("Unified API running on http://127.0.0.1:8080")

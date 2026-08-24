@@ -32,6 +32,38 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 	}
 }
 
+func (c *Client) GetHealth(ctx context.Context) domain.SourceStatus {
+	start := time.Now()
+	status := domain.SourceStatus{}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/health", nil)
+	if err != nil {
+		status.Status = "unavailable"
+		status.ErrorMessage = err.Error()
+		status.LatencyMs = time.Since(start).Milliseconds()
+		return status
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		status.Status = "unavailable"
+		status.ErrorMessage = err.Error()
+		status.LatencyMs = time.Since(start).Milliseconds()
+		return status
+	}
+	resp.Body.Close()
+
+	status.HTTPCode = resp.StatusCode
+	status.LatencyMs = time.Since(start).Milliseconds()
+	if resp.StatusCode == http.StatusOK {
+		status.Status = "ok"
+	} else {
+		status.Status = "unavailable"
+		status.ErrorMessage = fmt.Sprintf("upstream returned HTTP %d", resp.StatusCode)
+	}
+	return status
+}
+
 func (c *Client) GetResident(ctx context.Context, id string) (*domain.Resident, domain.SourceStatus) {
 	start := time.Now()
 

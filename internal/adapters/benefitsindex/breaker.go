@@ -98,3 +98,16 @@ func (b *CircuitBreaker) RecordFailure() {
 		}
 	}
 }
+
+func (b *CircuitBreaker) StateString() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	switch b.state {
+	case CircuitOpen:
+		return "open"
+	case CircuitHalfOpen:
+		return "half_open"
+	default:
+		return "closed"
+	}
+}

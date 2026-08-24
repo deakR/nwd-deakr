@@ -27,6 +27,12 @@ type SourceStatus struct {
 	HTTPCode     int    `json:"http_code,omitempty"`
 	LatencyMs    int64  `json:"latency_ms"`
 	ErrorMessage string `json:"error_message,omitempty"`
+	Circuit      string `json:"circuit,omitempty"`
+}
+
+type HealthResponse struct {
+	Status  string                 `json:"status"`
+	Sources map[string]SourceStatus `json:"sources"`
 }
 
 type UnifiedResponse struct {
