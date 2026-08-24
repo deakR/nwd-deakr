@@ -210,7 +210,10 @@ func getResidentUnified(
 			return
 		}
 
-		resident, resStatus := residentClient.GetResident(r.Context(), id)
+		ctx, cancel := context.WithTimeout(r.Context(), unifiedRequestTimeout)
+		defer cancel()
+
+		resident, resStatus := residentClient.GetResident(ctx, id)
 
 		if resStatus.Status == "not_found" {
 			http.Error(w, "resident not found", http.StatusNotFound)
@@ -231,7 +234,7 @@ func getResidentUnified(
 			},
 		}
 
-		records, fresh, fetchedAtMs := catalogue.Get(r.Context())
+		records, fresh, fetchedAtMs := catalogue.Get(ctx)
 
 		if records == nil {
 			response.Meta.Sources["benefits_register"] = domain.SourceStatus{

@@ -33,7 +33,7 @@ docker compose down
 
 ### Option B — Manual (Go + Python toolchains)
 
-This project uses **only the standard libraries** of Go and Python — zero external packages (`pip install`, `npm install`, or third-party Go modules are never needed). You only need the toolchains themselves:
+This project uses **only the standard libraries** of Go and Python — no third-party runtime packages (`pip install`, `npm install`, or third-party Go modules are never needed; the Swagger UI assets in `assets/` are vendored static files, not package dependencies). You only need the toolchains themselves:
 
 #### Prerequisites
 
@@ -104,6 +104,7 @@ You can test all endpoints interactively using the **"Try it out"** buttons:
 | `GET /unified` | Concurrent fan-out returning unified resident and benefits data with `_meta` diagnostics. | `?resident_id=R-10001&benefit_ref=CA/2016/4001` |
 | `GET /residents` | Complete catalogue of all 620 deduplicated residents with pagination receipt. | `/residents` |
 | `GET /residents/{id}` | Single resident lookup from Resident Index. | `/residents/R-10001` |
+| `GET /residents/{id}/unified` | Auto-unification: resident lookup plus evidence-based identity matching against the Benefits Register catalogue (`matched` / `ambiguous` / `no_match` / `unavailable`). | `/residents/R-10001/unified` |
 | `GET /benefits/{ref...}` | Single benefit record lookup from Benefits Register. | `/benefits/CA/2016/4001` |
 
 *(Raw OpenAPI YAML spec is also available at `http://127.0.0.1:8080/openapi.yaml`)*.
@@ -112,7 +113,7 @@ You can test all endpoints interactively using the **"Try it out"** buttons:
 
 ## 3. Running the Automated Test Suite
 
-Run the full suite of 22 unit and integration tests (covering graceful degradation, 3-attempt retries on 500s, boundary deduplication, context cancellations, and timeouts):
+Run the full suite of **63 unit and integration tests** (covering graceful degradation, bounded retries on 500s, circuit-breaker transitions, boundary deduplication, single-flight catalogue loading, identity-matching ground truth including wrong-merge detection, context cancellations, and timeouts):
 
 ```bash
 go test -v ./...

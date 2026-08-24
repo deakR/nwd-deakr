@@ -31,7 +31,7 @@ type SourceStatus struct {
 }
 
 type HealthResponse struct {
-	Status  string                 `json:"status"`
+	Status  string                  `json:"status"`
 	Sources map[string]SourceStatus `json:"sources"`
 }
 
