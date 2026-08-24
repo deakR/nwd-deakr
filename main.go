@@ -190,6 +190,67 @@ func getUnified(
 	}
 }
 
+func getResidentUnified(
+	residentClient *residentindex.Client,
+	catalogue *benefitsindex.Catalogue,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+
+		if id == "" {
+			http.Error(w, "resident ID is required", http.StatusBadRequest)
+			return
+		}
+
+		resident, resStatus := residentClient.GetResident(r.Context(), id)
+
+		if resStatus.Status == "not_found" {
+			http.Error(w, "resident not found", http.StatusNotFound)
+			return
+		}
+
+		response := domain.AutoUnifiedResponse{
+			Resident: resident,
+			IdentityMatch: domain.IdentityMatchMeta{
+				Outcome:       domain.IdentityUnavailable,
+				CandidateRefs: []string{},
+				Evidence:      []domain.IdentityEvidence{},
+			},
+			Meta: domain.UnifiedMeta{
+				Sources: map[string]domain.SourceStatus{
+					"resident_index": resStatus,
+				},
+			},
+		}
+
+		records, fresh, fetchedAtMs := catalogue.Get(r.Context())
+
+		if records == nil {
+			response.Meta.Sources["benefits_register"] = domain.SourceStatus{
+				Status:       "unavailable",
+				ErrorMessage: "benefits catalogue unavailable",
+			}
+		} else {
+			benefitSource := domain.SourceStatus{Status: "ok"}
+			if !fresh {
+				benefitSource.Status = "stale"
+				benefitSource.ErrorMessage = "serving cached catalogue snapshot"
+			}
+			response.Meta.Sources["benefits_register"] = benefitSource
+
+			matched, matchMeta := domain.MatchResidentToCatalogue(resident, records, fetchedAtMs)
+			response.Benefits = matched
+			response.IdentityMatch = matchMeta
+		}
+
+		benefitsStatus := response.Meta.Sources["benefits_register"]
+		response.Meta.Partial = resStatus.Status != "ok" || benefitsStatus.Status != "ok"
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
 func main() {
 	residentClient := residentindex.NewClient(
 		residentIndexURL,
@@ -201,11 +262,18 @@ func main() {
 		client,
 	)
 
+	catalogue := benefitsindex.NewCatalogue(benefitsClient, 0)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc(
 		"GET /residents/{id}",
 		getResident(residentClient),
+	)
+
+	mux.HandleFunc(
+		"GET /residents/{id}/unified",
+		getResidentUnified(residentClient, catalogue),
 	)
 
 	mux.HandleFunc(

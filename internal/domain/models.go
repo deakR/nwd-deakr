@@ -40,7 +40,6 @@ type UnifiedMeta struct {
 	Partial bool                    `json:"partial"`
 }
 
-// ResidentPage is the raw page payload returned by the Resident Index.
 type ResidentPage struct {
 	Page     int        `json:"page"`
 	PageSize int        `json:"page_size"`
@@ -64,4 +63,33 @@ type ResidentListResponse struct {
 	Residents  []Resident       `json:"residents"`
 	Pagination PaginationStatus `json:"pagination"`
 	Meta       UnifiedMeta      `json:"_meta"`
+}
+
+const (
+	IdentityMatched     = "matched"
+	IdentityAmbiguous   = "ambiguous"
+	IdentityNoMatch     = "no_match"
+	IdentityUnavailable = "unavailable"
+)
+
+type IdentityEvidence struct {
+	Rule          string `json:"rule"`
+	ResidentValue string `json:"resident_value,omitempty"`
+	BenefitValue  string `json:"benefit_value,omitempty"`
+	Result        string `json:"result,omitempty"`
+}
+
+type IdentityMatchMeta struct {
+	Outcome              string             `json:"outcome"`
+	MatchedRef           string             `json:"matched_ref,omitempty"`
+	CandidateRefs        []string           `json:"candidate_refs"`
+	Evidence             []IdentityEvidence `json:"evidence"`
+	CatalogueFetchedAtMs int64              `json:"catalogue_fetched_at_ms"`
+}
+
+type AutoUnifiedResponse struct {
+	Resident      *Resident         `json:"resident"`
+	Benefits      *BenefitRecord    `json:"benefits"`
+	IdentityMatch IdentityMatchMeta `json:"identity_match"`
+	Meta          UnifiedMeta       `json:"_meta"`
 }
