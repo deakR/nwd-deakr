@@ -191,3 +191,101 @@ func (c *Client) fetchBenefit(ctx context.Context, ref string) (*domain.BenefitR
 	status.LatencyMs = time.Since(start).Milliseconds()
 	return nil, status
 }
+
+func (c *Client) GetAllBenefits(ctx context.Context) ([]domain.BenefitRecord, domain.SourceStatus) {
+	start := time.Now()
+
+	status := domain.SourceStatus{
+		Status: "unavailable",
+	}
+
+	if allowed, _ := c.breaker.Allow(); !allowed {
+		status.Status = "circuit_open"
+		status.ErrorMessage = "benefits register circuit open"
+		status.LatencyMs = time.Since(start).Milliseconds()
+		return nil, status
+	}
+
+	maxAttempts := c.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = defaultMaxAttempts
+	}
+
+	backoff := c.RetryBackoff
+	if backoff <= 0 {
+		backoff = defaultRetryBackoff
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/records", nil)
+		if err != nil {
+			status.ErrorMessage = err.Error()
+			status.LatencyMs = time.Since(start).Milliseconds()
+			c.breaker.RecordFailure()
+			return nil, status
+		}
+
+		resp, err := c.HTTPClient.Do(req)
+		if err != nil {
+			status.ErrorMessage = fmt.Sprintf("attempt %d/%d: %v", attempt, maxAttempts, err)
+			if attempt < maxAttempts {
+				select {
+				case <-ctx.Done():
+					status.ErrorMessage = ctx.Err().Error()
+					status.LatencyMs = time.Since(start).Milliseconds()
+					c.breaker.RecordFailure()
+					return nil, status
+				case <-time.After(backoff):
+					continue
+				}
+			}
+			status.LatencyMs = time.Since(start).Milliseconds()
+			c.breaker.RecordFailure()
+			return nil, status
+		}
+
+		status.HTTPCode = resp.StatusCode
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			status.ErrorMessage = fmt.Sprintf("attempt %d/%d: upstream returned HTTP %d", attempt, maxAttempts, resp.StatusCode)
+			if attempt < maxAttempts {
+				select {
+				case <-ctx.Done():
+					status.ErrorMessage = ctx.Err().Error()
+					status.LatencyMs = time.Since(start).Milliseconds()
+					c.breaker.RecordFailure()
+					return nil, status
+				case <-time.After(backoff):
+					continue
+				}
+			}
+			status.LatencyMs = time.Since(start).Milliseconds()
+			c.breaker.RecordFailure()
+			return nil, status
+		}
+
+		var result struct {
+			Records []domain.BenefitRecord `xml:"Record"`
+		}
+		err = xml.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+
+		if err != nil {
+			status.ErrorMessage = fmt.Sprintf("decode response: %v", err)
+			status.LatencyMs = time.Since(start).Milliseconds()
+			c.breaker.RecordFailure()
+			return nil, status
+		}
+
+		status.Status = "ok"
+		status.ErrorMessage = ""
+		status.LatencyMs = time.Since(start).Milliseconds()
+		c.breaker.RecordSuccess()
+		return result.Records, status
+	}
+
+	status.LatencyMs = time.Since(start).Milliseconds()
+	c.breaker.RecordFailure()
+	return nil, status
+}

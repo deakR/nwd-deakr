@@ -58,7 +58,7 @@ func TestClientGetBenefitRecoversOnRetryAfter500s(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL, server.Client())
-	client.RetryBackoff = 1 * time.Millisecond // fast in test
+	client.RetryBackoff = 1 * time.Millisecond
 
 	record, status := client.GetBenefit(context.Background(), "CA/2016/4001")
 	if status.Status != "ok" {
@@ -109,5 +109,28 @@ func TestClientGetBenefitUpstream500ExhaustsRetries(t *testing.T) {
 	}
 	if atomic.LoadInt32(&attempts) != 3 {
 		t.Fatalf("expected 3 attempts before exhaustion, got %d", attempts)
+	}
+}
+
+func TestGetAllBenefitsTripsSharedCircuitBreaker(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "SRV-500", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, server.Client())
+	client.MaxAttempts = 1
+	client.RetryBackoff = 1 * time.Millisecond
+
+	for i := range 3 {
+		_, status := client.GetAllBenefits(context.Background())
+		if status.Status != "unavailable" {
+			t.Fatalf("call %d: expected unavailable, got %s", i+1, status.Status)
+		}
+	}
+
+	_, status := client.GetAllBenefits(context.Background())
+	if status.Status != "circuit_open" {
+		t.Fatalf("expected circuit_open after 3 failures, got %s", status.Status)
 	}
 }
